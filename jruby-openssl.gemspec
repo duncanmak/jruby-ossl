@@ -20,7 +20,7 @@ Gem::Specification.new do |s|
     "lib/openssl/pkcs7.rb", "lib/jopenssl/version.rb",
     "test/test_imaps.rb", "test/test_all.rb",
     "test/test_integration.rb", "test/ut_eof.rb", "test/test_java.rb",
-    "test/test_openssl.rb", "test/test_pkey.rb",
+    "test/test_openssl.rb", "test/test_pkey_dsa.rb", "test/test_pkey_rsa.rb",
     "test/test_cipher.rb", "test/cert_with_ec_pk.cer",
     "test/test_pkcs7.rb", "test/test_x509store.rb",
     "test/test_certificate.rb", "test/test_parse_certificate.rb",
