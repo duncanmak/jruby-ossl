@@ -11,9 +11,10 @@
   (See the file 'LICENCE'.)
 
 = Version
-  $Id: buffering.rb 13706 2007-10-15 08:29:08Z usa $
+  $Id: buffering.rb 31777 2011-05-28 23:32:46Z yugui $
 =end
 
+module OpenSSL
 module Buffering
   include Enumerable
   attr_accessor :sync
@@ -57,10 +58,10 @@ module Buffering
     if size == 0
       if buf
         buf.clear
+        return buf
       else
-        buf = ""
+        return ""
       end
-      return @eof ? nil : buf
     end
     until @eof
       break if size && size <= @rbuffer.size
@@ -78,10 +79,10 @@ module Buffering
     if maxlen == 0
       if buf
         buf.clear
+        return buf
       else
-        buf = ""
+        return ""
       end
-      return @eof ? nil : buf
     end
     if @rbuffer.empty?
       begin
@@ -99,7 +100,60 @@ module Buffering
     ret
   end
 
-  def gets(eol=$/)
+  # Reads at most _maxlen_ bytes in the non-blocking manner.
+  #
+  # When no data can be read without blocking,
+  # It raises OpenSSL::SSL::SSLError extended by
+  # IO::WaitReadable or IO::WaitWritable.
+  #
+  # IO::WaitReadable means SSL needs to read internally.
+  # So read_nonblock should be called again after
+  # underlying IO is readable.
+  #
+  # IO::WaitWritable means SSL needs to write internally.
+  # So read_nonblock should be called again after
+  # underlying IO is writable.
+  #
+  # So OpenSSL::Buffering#read_nonblock needs two rescue clause as follows.
+  # 
+  #  # emulates blocking read (readpartial).
+  #  begin
+  #    result = ssl.read_nonblock(maxlen)
+  #  rescue IO::WaitReadable
+  #    IO.select([io])
+  #    retry
+  #  rescue IO::WaitWritable
+  #    IO.select(nil, [io])
+  #    retry
+  #  end
+  #
+  # Note that one reason that read_nonblock write to a underlying IO
+  # is the peer requests a new TLS/SSL handshake.
+  # See openssl FAQ for more details.
+  # http://www.openssl.org/support/faq.html
+  #
+  def read_nonblock(maxlen, buf=nil)
+    if maxlen == 0
+      if buf
+        buf.clear
+        return buf
+      else
+        return ""
+      end
+    end
+    if @rbuffer.empty?
+      return sysread_nonblock(maxlen, buf)
+    end
+    ret = consume_rbuff(maxlen)
+    if buf
+      buf.replace(ret)
+      ret = buf
+    end
+    raise EOFError if ret.empty?
+    ret
+  end
+
+  def gets(eol=$/, limit=nil)
     idx = @rbuffer.index(eol)
     until @eof
       break if idx
@@ -110,6 +164,9 @@ module Buffering
       size = idx ? idx+$&.size : nil
     else
       size = idx ? idx+eol.size : nil
+    end
+    if limit and limit >= 0
+      size = [size, limit].min
     end
     consume_rbuff(size)
   end
@@ -193,6 +250,48 @@ module Buffering
     s.length
   end
 
+  # Writes _str_ in the non-blocking manner.
+  #
+  # If there are buffered data, it is flushed at first.
+  # This may block.
+  #
+  # write_nonblock returns number of bytes written to the SSL connection.
+  #
+  # When no data can be written without blocking,
+  # It raises OpenSSL::SSL::SSLError extended by
+  # IO::WaitReadable or IO::WaitWritable.
+  #
+  # IO::WaitReadable means SSL needs to read internally.
+  # So write_nonblock should be called again after
+  # underlying IO is readable.
+  #
+  # IO::WaitWritable means SSL needs to write internally.
+  # So write_nonblock should be called again after
+  # underlying IO is writable.
+  #
+  # So OpenSSL::Buffering#write_nonblock needs two rescue clause as follows.
+  # 
+  #  # emulates blocking write.
+  #  begin
+  #    result = ssl.write_nonblock(str)
+  #  rescue IO::WaitReadable
+  #    IO.select([io])
+  #    retry
+  #  rescue IO::WaitWritable
+  #    IO.select(nil, [io])
+  #    retry
+  #  end
+  #
+  # Note that one reason that write_nonblock read from a underlying IO
+  # is the peer requests a new TLS/SSL handshake.
+  # See openssl FAQ for more details.
+  # http://www.openssl.org/support/faq.html
+  #
+  def write_nonblock(s)
+    flush
+    syswrite_nonblock(s)
+  end
+
   def << (s)
     do_write(s)
     self
@@ -229,6 +328,8 @@ module Buffering
     osync = @sync
     @sync = true
     do_write ""
+    return self
+  ensure
     @sync = osync
   end
 
@@ -236,4 +337,5 @@ module Buffering
     flush rescue nil
     sysclose
   end
+end
 end
