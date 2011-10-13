@@ -11,10 +11,9 @@
   (See the file 'LICENCE'.)
 
 = Version
-  $Id: ssl.rb 16193 2008-04-25 06:51:21Z knu $
+  $Id: ssl-internal.rb 29189 2010-09-06 01:53:00Z nahi $
 =end
 
-require "openssl"
 require "openssl/buffering"
 require "fcntl"
 
@@ -36,7 +35,6 @@ module OpenSSL
 
       def set_params(params={})
         params = DEFAULT_PARAMS.merge(params)
-        self.ssl_version = params.delete(:ssl_version)
         params.each{|name, value| self.__send__("#{name}=", value) }
         if self.verify_mode != OpenSSL::SSL::VERIFY_NONE
           unless self.ca_file or self.ca_path or self.cert_store
@@ -120,7 +118,7 @@ module OpenSSL
 
       def post_connection_check(hostname)
         unless OpenSSL::SSL.verify_certificate_identity(peer_cert, hostname)
-          raise SSLError, "hostname was not match with the server certificate"
+          raise SSLError, "hostname does not match the server certificate"
         end
         return true
       end
